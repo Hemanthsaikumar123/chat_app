@@ -6,14 +6,27 @@
 <body>
   <h2>Real-Time Chat</h2>
 
-  <div id="login">
-    <input id="username" placeholder="Enter username" />
-    <button onclick="joinChat()">Join</button>
-  </div>
+<div id="login">
+  <input id="username" placeholder="Enter username" />
+  <input id="room" placeholder="Enter room name" />
+  <button onclick="joinChat()">Join</button>
+</div>
+
 
   <div id="chat" style="display:none;">
-    <ul id="messages"></ul>
+    <div style="display:flex; gap:40px;">
+  
+        <div>
+            <h3>Messages</h3>
+            <ul id="messages"></ul>
+        </div>
 
+        <div>
+            <h3>Active Users</h3>
+            <ul id="users"></ul>
+        </div>
+
+    </div>
     <input id="message" placeholder="Type message..." />
     <button onclick="sendMessage()">Send</button>
   </div>
@@ -22,16 +35,20 @@
   <script>
     const socket = io();
     let username = "";
+    let room = "";
 
     function joinChat() {
-      username = document.getElementById("username").value;
-      if (!username) return alert("Enter username");
+    username = document.getElementById("username").value;
+    room = document.getElementById("room").value;
 
-      socket.emit("user-joined", username);
+    if (!username || !room) return alert("Enter username and room");
 
-      document.getElementById("login").style.display = "none";
-      document.getElementById("chat").style.display = "block";
-    }
+    socket.emit("join-room", { username, room });
+
+    document.getElementById("login").style.display = "none";
+    document.getElementById("chat").style.display = "block";
+}
+
 
     function sendMessage() {
       const input = document.getElementById("message");
@@ -55,6 +72,17 @@
       li.style.color = "gray";
       document.getElementById("messages").appendChild(li);
     });
+    socket.on("room-users", (users) => {
+        const usersList = document.getElementById("users");
+        usersList.innerHTML = "";
+
+        users.forEach(user => {
+            const li = document.createElement("li");
+            li.textContent = user;
+            usersList.appendChild(li);
+        });
+        });
+
   </script>
 </body>
 
