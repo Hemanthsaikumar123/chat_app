@@ -50,21 +50,43 @@
 }
 
 
-    function sendMessage() {
-      const input = document.getElementById("message");
-      const msg = input.value;
+  function sendMessage() {
+    const input = document.getElementById("message");
+    const msg = input.value.trim();
+    if (!msg) return;
 
-      if (!msg) return;
+    if (msg.startsWith("@")) {
+      const spaceIndex = msg.indexOf(" ");
+      if (spaceIndex === -1) return alert("Invalid private message format");
 
+      const targetUser = msg.substring(1, spaceIndex);
+      const privateMsg = msg.substring(spaceIndex + 1);
+
+      socket.emit("private-message", {
+        to: targetUser,
+        message: privateMsg
+      });
+    } else {
       socket.emit("chat-message", msg);
-      input.value = "";
     }
+
+    input.value = "";
+  }
+
 
     socket.on("chat-message", (data) => {
       const li = document.createElement("li");
       li.textContent = `[${data.time}] ${data.user}: ${data.message}`;
       document.getElementById("messages").appendChild(li);
     });
+    
+    socket.on("private-message", (data) => {
+      const li = document.createElement("li");
+      li.textContent = `[${data.time}] (Private) ${data.from}: ${data.message}`;
+      li.style.color = "purple";
+      document.getElementById("messages").appendChild(li);
+    });
+
 
     socket.on("system-message", (msg) => {
       const li = document.createElement("li");

@@ -15,6 +15,11 @@ function getRoomUsers(room) {
     .filter(user => user.room === room)
     .map(user => user.username);
 }
+function getUserByUsername(username, room) {
+  return Object.entries(users)
+    .find(([id, user]) => user.username === username && user.room === room);
+}
+
 
 io.on("connection", (socket) => {
   console.log("New user connected:", socket.id);
@@ -43,6 +48,30 @@ io.on("connection", (socket) => {
 
     io.to(user.room).emit("chat-message", messageData);
   });
+
+  socket.on("private-message", ({ to, message }) => {
+    const sender = users[socket.id];
+    if (!sender) return;
+
+    const target = getUserByUsername(to, sender.room);
+    if (!target) return;
+
+    const [targetSocketId] = target;
+
+    const messageData = {
+      from: sender.username,
+      message,
+      time: new Date().toLocaleTimeString(),
+      private: true
+    };
+
+    // Send to receiver
+    io.to(targetSocketId).emit("private-message", messageData);
+
+    // Send back to sender (so they see their own DM)
+    socket.emit("private-message", messageData);
+  });
+
 
   socket.on("disconnect", () => {
   const user = users[socket.id];
