@@ -9,6 +9,7 @@ const io = new Server(server);
 app.use(express.static("public"));
 
 const users = {}; // socket.id -> { username, room }
+const roomMessages = {}; // room -> messages[]
 
 function getRoomUsers(room) {
   return Object.values(users)
@@ -27,13 +28,20 @@ io.on("connection", (socket) => {
   socket.on("join-room", ({ username, room }) => {
   users[socket.id] = { username, room };
 
-  socket.join(room);
+    socket.join(room);
 
-  io.to(room).emit("system-message", `${username} joined ${room}`);
+    if (!roomMessages[room]) {
+      roomMessages[room] = [];
+    }
 
-  //Send updated user list
-  io.to(room).emit("room-users", getRoomUsers(room));
-});
+    // Send old messages to newly joined user only
+    socket.emit("chat-history", roomMessages[room]);
+
+    io.to(room).emit("system-message", `${username} joined ${room}`);
+
+    io.to(room).emit("room-users", getRoomUsers(room));
+  });
+
 
 
   socket.on("chat-message", (msg) => {
@@ -46,8 +54,12 @@ io.on("connection", (socket) => {
       time: new Date().toLocaleTimeString()
     };
 
+    // Save message in room history
+    roomMessages[user.room].push(messageData);
+
     io.to(user.room).emit("chat-message", messageData);
   });
+
 
   socket.on("private-message", ({ to, message }) => {
     const sender = users[socket.id];
@@ -70,6 +82,12 @@ io.on("connection", (socket) => {
 
     // Send back to sender (so they see their own DM)
     socket.emit("private-message", messageData);
+  });
+  socket.on("typing", () => {
+    const user = users[socket.id];
+    if (!user) return;
+
+    socket.to(user.room).emit("typing", user.username);
   });
 
 

@@ -19,6 +19,8 @@
         <div>
             <h3>Messages</h3>
             <ul id="messages"></ul>
+            <p id="typing" style="color: gray;"></p>
+
         </div>
 
         <div>
@@ -27,7 +29,7 @@
         </div>
 
     </div>
-    <input id="message" placeholder="Type message..." />
+    <input id="message" placeholder="Type message..." oninput="sendTyping()" />
     <button onclick="sendMessage()">Send</button>
   </div>
 
@@ -48,6 +50,10 @@
     document.getElementById("login").style.display = "none";
     document.getElementById("chat").style.display = "block";
 }
+    function sendTyping() {
+    socket.emit("typing");
+  }
+
 
 
   function sendMessage() {
@@ -72,6 +78,28 @@
 
     input.value = "";
   }
+
+    socket.on("typing", (username) => {
+      const typing = document.getElementById("typing");
+      typing.textContent = `${username} is typing...`;
+
+      setTimeout(() => {
+        typing.textContent = "";
+      }, 1000);
+    });
+
+    socket.on("chat-history", (messages) => {
+      const messagesList = document.getElementById("messages");
+      messagesList.innerHTML = "";
+
+      messages.forEach(data => {
+        const li = document.createElement("li");
+        li.textContent = `[${data.time}] ${data.user}: ${data.message}`;
+        messagesList.appendChild(li);
+      });
+    });
+
+
 
 
     socket.on("chat-message", (data) => {
