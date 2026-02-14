@@ -2,138 +2,286 @@
 <html>
 <head>
   <title>Chat App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h2>Real-Time Chat</h2>
-
-<div id="login">
-  <input id="username" placeholder="Enter username" />
-  <input id="room" placeholder="Enter room name" />
-  <button onclick="joinChat()">Join</button>
-</div>
-
-
-  <div id="chat" style="display:none;">
-    <div style="display:flex; gap:40px;">
-  
-        <div>
-            <h3>Messages</h3>
-            <ul id="messages"></ul>
-            <p id="typing" style="color: gray;"></p>
-
+  <div class="container">
+    <div id="login">
+      <div class="login-header">
+        <h1>💬 Chat App</h1>
+        <p>Connect and chat in real-time</p>
+      </div>
+      <div class="login-form">
+        <div class="input-group">
+          <input id="username" placeholder="Enter your username" />
         </div>
-
-        <div>
-            <h3>Active Users</h3>
-            <ul id="users"></ul>
+        <div class="input-group">
+          <input id="room" placeholder="Enter room name" />
         </div>
-
+        <button class="btn-primary" onclick="joinChat()">Join Chat</button>
+      </div>
     </div>
-    <input id="message" placeholder="Type message..." oninput="sendTyping()" />
-    <button onclick="sendMessage()">Send</button>
+
+    <div id="chat">
+      <div class="chat-header">
+        <div>
+          <h2 id="roomName">Chat Room</h2>
+          <div class="room-info" id="userInfo"></div>
+        </div>
+      </div>
+      
+      <div class="chat-body">
+        <div class="messages-section">
+          <div class="messages-container">
+            <ul id="messages"></ul>
+          </div>
+          <div id="typing"></div>
+          <div class="pm-indicator" id="pmIndicator">
+            <div class="pm-indicator-text">
+              <span>🔒</span>
+              <span id="pmTarget">Sending private message to <strong></strong></span>
+            </div>
+            <button class="btn-cancel-pm" onclick="cancelPrivateMode()">✕ Send to Everyone</button>
+          </div>
+          <div class="message-input-container">
+            <input id="message" placeholder="Type a message..." oninput="sendTyping()" onkeypress="handleKeyPress(event)" />
+            <button class="btn-send" onclick="sendMessage()">Send</button>
+          </div>
+        </div>
+
+        <div class="users-sidebar">
+          <div class="users-header">
+            <h3>Online Users</h3>
+            <div class="users-count" id="usersCount">0 users</div>
+          </div>
+          <ul id="users"></ul>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io();
+    let socket;
     let username = "";
     let room = "";
+    let privateMessageTarget = null;
 
-    function joinChat() {
-    username = document.getElementById("username").value;
-    room = document.getElementById("room").value;
+    async function joinChat() {
+      username = document.getElementById("username").value.trim();
+      room = document.getElementById("room").value.trim();
 
-    if (!username || !room) return alert("Enter username and room");
+      if (!username || !room) return alert("Please enter both username and room name");
 
-    socket.emit("join-room", { username, room });
-
-    document.getElementById("login").style.display = "none";
-    document.getElementById("chat").style.display = "block";
-}
-    function sendTyping() {
-    socket.emit("typing");
-  }
-
-
-
-  function sendMessage() {
-    const input = document.getElementById("message");
-    const msg = input.value.trim();
-    if (!msg) return;
-
-    if (msg.startsWith("@")) {
-      const spaceIndex = msg.indexOf(" ");
-      if (spaceIndex === -1) return alert("Invalid private message format");
-
-      const targetUser = msg.substring(1, spaceIndex);
-      const privateMsg = msg.substring(spaceIndex + 1);
-
-      socket.emit("private-message", {
-        to: targetUser,
-        message: privateMsg
+      // Get token from server
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username })
       });
-    } else {
-      socket.emit("chat-message", msg);
+
+      const data = await res.json();
+
+      // Connect socket with token
+      socket = io({
+        auth: {
+          token: data.token
+        }
+      });
+
+      socket.emit("join-room", { room });
+
+      setupSocketListeners();
+
+      document.getElementById("login").style.display = "none";
+      document.getElementById("chat").style.display = "flex";
+      document.getElementById("roomName").textContent = `# ${room}`;
+      document.getElementById("userInfo").textContent = `Logged in as ${username}`;
+      document.getElementById("message").focus();
     }
 
-    input.value = "";
-  }
+    function createMessageElement(data, isOwn = false, isPrivate = false) {
+      const li = document.createElement("li");
+      li.className = `message ${isOwn ? 'own' : 'other'}`;
+      if (isPrivate) li.classList.add('private-message');
+      
+      const bubble = document.createElement("div");
+      bubble.className = "message-bubble";
+      
+      if (!isOwn) {
+        const info = document.createElement("div");
+        info.className = "message-info";
+        info.textContent = `${data.user} • ${data.time}`;
+        bubble.appendChild(info);
+      }
+      
+      const text = document.createElement("div");
+      text.className = "message-text";
+      text.textContent = data.message;
+      bubble.appendChild(text);
+      
+      if (isOwn) {
+        const info = document.createElement("div");
+        info.className = "message-info";
+        info.style.textAlign = "right";
+        info.style.marginTop = "4px";
+        info.textContent = data.time;
+        bubble.appendChild(info);
+      }
+      
+      li.appendChild(bubble);
+      return li;
+    }
 
-    socket.on("typing", (username) => {
-      const typing = document.getElementById("typing");
-      typing.textContent = `${username} is typing...`;
+    function createSystemMessage(text) {
+      const li = document.createElement("li");
+      li.className = "system-message";
+      li.textContent = text;
+      return li;
+    }
 
-      setTimeout(() => {
-        typing.textContent = "";
-      }, 1000);
-    });
+    function scrollToBottom() {
+      const container = document.querySelector(".messages-container");
+      container.scrollTop = container.scrollHeight;
+    }
 
-    socket.on("chat-history", (messages) => {
-      const messagesList = document.getElementById("messages");
-      messagesList.innerHTML = "";
+    function setupSocketListeners() {
+      socket.on("typing", (typingUsername) => {
+        const typing = document.getElementById("typing");
+        typing.textContent = `${typingUsername} is typing...`;
 
-      messages.forEach(data => {
-        const li = document.createElement("li");
-        li.textContent = `[${data.time}] ${data.user}: ${data.message}`;
-        messagesList.appendChild(li);
+        setTimeout(() => {
+          typing.textContent = "";
+        }, 1000);
       });
-    });
 
+      socket.on("chat-history", (messages) => {
+        const messagesList = document.getElementById("messages");
+        messagesList.innerHTML = "";
 
+        messages.forEach(data => {
+          const isOwn = data.user === username;
+          const li = createMessageElement(data, isOwn);
+          messagesList.appendChild(li);
+        });
+        
+        scrollToBottom();
+      });
 
+      socket.on("chat-message", (data) => {
+        const isOwn = data.user === username;
+        const li = createMessageElement(data, isOwn);
+        document.getElementById("messages").appendChild(li);
+        scrollToBottom();
+      });
+      
+      socket.on("private-message", (data) => {
+        const pmData = {
+          user: data.from,
+          message: `🔒 ${data.message}`,
+          time: data.time
+        };
+        const li = createMessageElement(pmData, false, true);
+        document.getElementById("messages").appendChild(li);
+        scrollToBottom();
+      });
 
-    socket.on("chat-message", (data) => {
-      const li = document.createElement("li");
-      li.textContent = `[${data.time}] ${data.user}: ${data.message}`;
-      document.getElementById("messages").appendChild(li);
-    });
-    
-    socket.on("private-message", (data) => {
-      const li = document.createElement("li");
-      li.textContent = `[${data.time}] (Private) ${data.from}: ${data.message}`;
-      li.style.color = "purple";
-      document.getElementById("messages").appendChild(li);
-    });
+      socket.on("system-message", (msg) => {
+        const li = createSystemMessage(msg);
+        document.getElementById("messages").appendChild(li);
+        scrollToBottom();
+      });
 
-
-    socket.on("system-message", (msg) => {
-      const li = document.createElement("li");
-      li.textContent = msg;
-      li.style.color = "gray";
-      document.getElementById("messages").appendChild(li);
-    });
-    socket.on("room-users", (users) => {
+      socket.on("room-users", (users) => {
         const usersList = document.getElementById("users");
         usersList.innerHTML = "";
 
         users.forEach(user => {
-            const li = document.createElement("li");
-            li.textContent = user;
-            usersList.appendChild(li);
+          const li = document.createElement("li");
+          li.textContent = user;
+          if (user === username) {
+            li.textContent += " (You)";
+            li.style.fontWeight = "600";
+            li.style.cursor = "default";
+          } else {
+            li.onclick = () => selectUserForPM(user);
+            li.title = "Click to send private message";
+          }
+          
+          if (privateMessageTarget === user) {
+            li.classList.add("selected");
+          }
+          
+          usersList.appendChild(li);
         });
-        });
+        
+        document.getElementById("usersCount").textContent = `${users.length} user${users.length !== 1 ? 's' : ''}`;
+      });
+    }
 
+    function sendTyping() {
+      if (socket) {
+        socket.emit("typing");
+      }
+    }
+
+    function selectUserForPM(user) {
+      privateMessageTarget = user;
+      document.getElementById("pmIndicator").classList.add("active");
+      document.querySelector("#pmTarget strong").textContent = user;
+      document.getElementById("message").placeholder = `Private message to ${user}...`;
+      document.getElementById("message").focus();
+      
+      // Update user list styling
+      document.querySelectorAll("#users li").forEach(li => li.classList.remove("selected"));
+      event.target.classList.add("selected");
+    }
+
+    function cancelPrivateMode() {
+      privateMessageTarget = null;
+      document.getElementById("pmIndicator").classList.remove("active");
+      document.getElementById("message").placeholder = "Type a message...";
+      document.querySelectorAll("#users li").forEach(li => li.classList.remove("selected"));
+      document.getElementById("message").focus();
+    }
+
+    function handleKeyPress(event) {
+      if (event.key === "Enter") {
+        sendMessage();
+      }
+    }
+
+    function sendMessage() {
+      const input = document.getElementById("message");
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      // Check if in private message mode (clicked on username)
+      if (privateMessageTarget) {
+        socket.emit("private-message", {
+          to: privateMessageTarget,
+          message: msg
+        });
+        // Don't auto-cancel, keep PM mode active for continued conversation
+      } else if (msg.startsWith("@")) {
+        // Support @ syntax as alternative
+        const spaceIndex = msg.indexOf(" ");
+        if (spaceIndex === -1) return alert("Invalid private message format. Use: @username message");
+
+        const targetUser = msg.substring(1, spaceIndex);
+        const privateMsg = msg.substring(spaceIndex + 1);
+
+        socket.emit("private-message", {
+          to: targetUser,
+          message: privateMsg
+        });
+      } else {
+        socket.emit("chat-message", msg);
+      }
+
+      input.value = "";
+    }
   </script>
 </body>
-
 </html>

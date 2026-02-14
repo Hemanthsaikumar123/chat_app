@@ -1,5 +1,7 @@
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
+const jwt = require("jsonwebtoken");
 const { Server } = require("socket.io");
 
 const app = express();
@@ -7,6 +9,23 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static("public"));
+app.use(express.json());
+
+const SECRET = process.env.JWT_SECRET || "fallback_secret_key";
+const PORT = process.env.PORT || 3000;
+
+app.post("/login", (req, res) => {
+  const { username } = req.body;
+
+  if (!username) {
+    return res.status(400).json({ error: "Username required" });
+  }
+
+  const token = jwt.sign({ username }, SECRET, { expiresIn: "1h" });
+
+  res.json({ token });
+});
+
 
 const users = {}; // socket.id -> { username, room }
 const roomMessages = {}; // room -> messages[]
@@ -22,13 +41,32 @@ function getUserByUsername(username, room) {
 }
 
 
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+
+  if (!token) {
+    return next(new Error("Authentication error"));
+  }
+
+  try {
+    const decoded = jwt.verify(token, SECRET);
+    socket.user = decoded; // attach user info
+    next();
+  } catch (err) {
+    next(new Error("Authentication error"));
+  }
+});
+
+
 io.on("connection", (socket) => {
   console.log("New user connected:", socket.id);
 
-  socket.on("join-room", ({ username, room }) => {
+  socket.on("join-room", ({ room }) => {
+  const username = socket.user.username;
+
   users[socket.id] = { username, room };
 
-    socket.join(room);
+socket.join(room);
 
     if (!roomMessages[room]) {
       roomMessages[room] = [];
@@ -106,6 +144,6 @@ io.on("connection", (socket) => {
 });
 
 
-server.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
